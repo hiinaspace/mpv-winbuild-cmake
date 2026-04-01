@@ -15,6 +15,11 @@ on:
         required: false
         default: false
         type: boolean
+      force_rebuild:
+        description: 'Ignore caches and rebuild LLVM/Clang toolchain'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build_llvm:
@@ -40,6 +45,7 @@ jobs:
 
       - name: Loading clang root
         id: clang_root_cache
+        if: ${{ github.event.inputs.force_rebuild != 'true' }}
         uses: actions/cache/restore@main
         with:
           path: clang_root
@@ -48,6 +54,7 @@ jobs:
 
       - name: Loading x86_64 toolchain
         id: x86_64_cache
+        if: ${{ github.event.inputs.force_rebuild != 'true' }}
         uses: actions/cache/restore@main
         with:
           path: build_x86_64
@@ -69,7 +76,7 @@ jobs:
         run: ${{ github.event.inputs.command }}
 
       - name: Building LLVM with IR Profile Instrumentation
-        if: ${{ steps.clang_root_cache.outputs.cache-matched-key == '' }}
+        if: ${{ github.event.inputs.force_rebuild == 'true' || steps.clang_root_cache.outputs.cache-matched-key == '' }}
         run: |
           cmake -DTARGET_ARCH=x86_64-w64-mingw32 -DLLVM_ENABLE_PGO=GEN -DCOMPILER_TOOLCHAIN=clang -DCMAKE_INSTALL_PREFIX=$PWD/clang_root -DMINGW_INSTALL_PREFIX=$PWD/build_x86_64/x86_64-w64-mingw32 -DSINGLE_SOURCE_LOCATION=$PWD/src_packages -DRUSTUP_LOCATION=$PWD/clang_root/install_rustup -G Ninja -B build_x86_64 -S $PWD
           ninja -C build_x86_64 llvm
@@ -77,25 +84,25 @@ jobs:
           ninja -C build_x86_64 cargo-clean
 
       - name: Building x86_64 toolchain
-        if: ${{ steps.x86_64_cache.outputs.cache-matched-key == '' }}
+        if: ${{ github.event.inputs.force_rebuild == 'true' || steps.x86_64_cache.outputs.cache-matched-key == '' }}
         run: |
           cmake -DTARGET_ARCH=x86_64-w64-mingw32 -DLLVM_ENABLE_PGO=GEN -DCOMPILER_TOOLCHAIN=clang -DCMAKE_INSTALL_PREFIX=$PWD/clang_root -DMINGW_INSTALL_PREFIX=$PWD/build_x86_64/x86_64-w64-mingw32 -DSINGLE_SOURCE_LOCATION=$PWD/src_packages -DRUSTUP_LOCATION=$PWD/clang_root/install_rustup -G Ninja -B build_x86_64 -S $PWD
           ninja -C build_x86_64 llvm-clang
 
       - name: PGO training with shaderc
-        if: ${{ steps.clang_root_cache.outputs.cache-matched-key == '' }}
+        if: ${{ github.event.inputs.force_rebuild == 'true' || steps.clang_root_cache.outputs.cache-matched-key == '' }}
         run: |
           cmake -DTARGET_ARCH=x86_64-w64-mingw32 -DLLVM_ENABLE_PGO=GEN -DCLANG_PACKAGES_LTO=ON -DCOMPILER_TOOLCHAIN=clang -DCMAKE_INSTALL_PREFIX=$PWD/clang_root -DMINGW_INSTALL_PREFIX=$PWD/build_x86_64/x86_64-w64-mingw32 -DSINGLE_SOURCE_LOCATION=$PWD/src_packages -DRUSTUP_LOCATION=$PWD/clang_root/install_rustup -G Ninja -B build_x86_64 -S $PWD
           ninja -C build_x86_64 shaderc
 
       - name: Merging profraw to profdata
-        if: ${{ steps.clang_root_cache.outputs.cache-matched-key == '' }}
+        if: ${{ github.event.inputs.force_rebuild == 'true' || steps.clang_root_cache.outputs.cache-matched-key == '' }}
         run: |
           llvm-profdata merge $PWD/clang_root/profiles/*.profraw -o llvm.profdata
           rm -rf $PWD/clang_root/profiles/* || true
 
       - name: Building LLVM with PGO
-        if: ${{ steps.clang_root_cache.outputs.cache-matched-key == '' }}
+        if: ${{ github.event.inputs.force_rebuild == 'true' || steps.clang_root_cache.outputs.cache-matched-key == '' }}
         run: |
           cmake -DTARGET_ARCH=x86_64-w64-mingw32 -DLLVM_ENABLE_PGO=USE -DLLVM_PROFDATA_FILE="llvm.profdata" -DCOMPILER_TOOLCHAIN=clang -DCMAKE_INSTALL_PREFIX=$PWD/clang_root -DMINGW_INSTALL_PREFIX=$PWD/build_x86_64/x86_64-w64-mingw32 -DSINGLE_SOURCE_LOCATION=$PWD/src_packages -DRUSTUP_LOCATION=$PWD/clang_root/install_rustup -G Ninja -B build_x86_64 -S $PWD
           ninja -C build_x86_64 llvm
