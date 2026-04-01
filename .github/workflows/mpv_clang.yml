@@ -181,6 +181,7 @@ jobs:
 
       - name: Cleaning rust toolchain directory
         if: always()
+        continue-on-error: true
         run: |
           ninja -C build_$BIT cargo-clean
 
