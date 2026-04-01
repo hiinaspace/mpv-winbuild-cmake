@@ -35,6 +35,11 @@ on:
         required: false
         default: 'master'
         type: string
+      update_sources:
+        description: 'Run ninja update before building'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build_mpv:
@@ -119,8 +124,9 @@ jobs:
         id: build_mpv_step
         env:
           MPV_TARBALL: ${{ github.event.inputs.mpv_tarball }}
+          UPDATE_SOURCES: ${{ github.event.inputs.update_sources }}
         run: |
-          ninja -C build_$BIT update
+          $UPDATE_SOURCES && ninja -C build_$BIT update || true
           $MPV_TARBALL && ninja -C build_$BIT mpv-release || ninja -C build_$BIT mpv
           $MPV_TARBALL && echo "mpv_ver=$(cat build_$BIT/packages/mpv-release-prefix/VERSION)" >> $GITHUB_OUTPUT || echo "mpv_ver=UNKNOWN" >> $GITHUB_OUTPUT
 
