@@ -133,7 +133,15 @@ jobs:
       - name: Packaging mpv
         run: |
           mkdir -p release_$BIT
-          ninja -C build_$BIT mpv-packaging; mv build_$BIT/mpv*.7z release_$BIT
+          ninja -C build_$BIT mpv-packaging
+          shopt -s nullglob
+          archives=(build_$BIT/mpv*.7z)
+          if [[ ${#archives[@]} -eq 0 ]]; then
+            echo "Expected packaged archives under build_$BIT but found none"
+            find build_$BIT -maxdepth 2 \( -type f -o -type d \) | sort
+            exit 1
+          fi
+          mv "${archives[@]}" release_$BIT
 
       - name: Copying ffmpeg
         run: |
