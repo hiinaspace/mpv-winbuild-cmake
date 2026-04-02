@@ -123,6 +123,7 @@ jobs:
       - name: Reset cached mpv build state
         run: |
           rm -rf build_$BIT/packages/mpv-prefix/src/mpv-build
+          mkdir -p build_$BIT/packages/mpv-prefix/src/mpv-build
           rm -f build_$BIT/packages/mpv-prefix/src/mpv-stamp/mpv-build
           rm -f build_$BIT/packages/mpv-prefix/src/mpv-stamp/mpv-configure
           rm -f build_$BIT/packages/mpv-prefix/src/mpv-stamp/mpv-install
