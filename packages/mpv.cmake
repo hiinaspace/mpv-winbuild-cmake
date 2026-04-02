@@ -25,7 +25,7 @@ ExternalProject_Add(mpv
         spirv-cross
         vapoursynth
         libsdl2
-        subrandr
+        ${mpv_subrandr_dep}
     GIT_REPOSITORY ${MPV_GIT_REPOSITORY}
     GIT_TAG ${MPV_GIT_TAG}
     SOURCE_DIR ${SOURCE_LOCATION}
@@ -57,7 +57,7 @@ ExternalProject_Add(mpv
         -Dspirv-cross=enabled
         -Dvulkan=enabled
         -Dvapoursynth=enabled
-        -Dsubrandr=enabled
+        ${mpv_subrandr_option}
         ${mpv_gl}
         -Dc_args='-Wno-error=int-conversion'
     BUILD_COMMAND ${EXEC} LTO_JOB=1 PDB=1 ninja -C <BINARY_DIR>
