@@ -4,6 +4,9 @@ defaults:
     shell: bash
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       command:
@@ -28,12 +31,12 @@ on:
       mpv_repo:
         description: 'Custom mpv git repository URL'
         required: false
-        default: 'https://github.com/mpv-player/mpv.git'
+        default: 'https://github.com/hiinaspace/mpv.git'
         type: string
       mpv_ref:
         description: 'Custom mpv git ref (branch, tag, or commit)'
         required: false
-        default: 'master'
+        default: 'codex/godot-audio-callback'
         type: string
       update_sources:
         description: 'Run ninja update before building'
@@ -52,6 +55,10 @@ jobs:
         bit: [x86_64]
     env:
       BIT: ${{ matrix.bit }}
+      MPV_REPO_INPUT: ${{ github.event_name == 'push' && 'https://github.com/hiinaspace/mpv.git' || github.event.inputs.mpv_repo }}
+      MPV_REF_INPUT: ${{ github.event_name == 'push' && 'codex/godot-audio-callback' || github.event.inputs.mpv_ref }}
+      MPV_TARBALL_INPUT: ${{ github.event_name == 'push' && 'false' || github.event.inputs.mpv_tarball }}
+      UPDATE_SOURCES_INPUT: ${{ github.event_name == 'push' && 'false' || github.event.inputs.update_sources }}
     container:
       image: docker://ghcr.io/shinchiro/archlinux:latest
     outputs:
@@ -81,8 +88,6 @@ jobs:
           git config --global --add safe.directory $PWD
 
       - uses: actions/checkout@main
-        with:
-          ref: master
 
       - name: Loading clang sysroot cache
         uses: actions/cache/restore@main
@@ -117,7 +122,7 @@ jobs:
 
       - name: Configuring CMake & Downloading source
         run: |
-          cmake -DTARGET_ARCH=${{ env.arch }}-w64-mingw32 -DCOMPILER_TOOLCHAIN=clang ${{ env.x86_64_v3_ARCH }} -DMPV_GIT_REPOSITORY='${{ github.event.inputs.mpv_repo }}' -DMPV_GIT_TAG='${{ github.event.inputs.mpv_ref }}' -DCMAKE_INSTALL_PREFIX=$PWD/clang_root -DMINGW_INSTALL_PREFIX=$PWD/build_$BIT/$BIT-w64-mingw32 -DSINGLE_SOURCE_LOCATION=$PWD/src_packages -DRUSTUP_LOCATION=$PWD/clang_root/install_rustup -DENABLE_CCACHE=ON -DCLANG_PACKAGES_LTO=ON -G Ninja --fresh -B build_$BIT -S $PWD
+          cmake -DTARGET_ARCH=${{ env.arch }}-w64-mingw32 -DCOMPILER_TOOLCHAIN=clang ${{ env.x86_64_v3_ARCH }} -DMPV_GIT_REPOSITORY='${{ env.MPV_REPO_INPUT }}' -DMPV_GIT_TAG='${{ env.MPV_REF_INPUT }}' -DCMAKE_INSTALL_PREFIX=$PWD/clang_root -DMINGW_INSTALL_PREFIX=$PWD/build_$BIT/$BIT-w64-mingw32 -DSINGLE_SOURCE_LOCATION=$PWD/src_packages -DRUSTUP_LOCATION=$PWD/clang_root/install_rustup -DENABLE_CCACHE=ON -DCLANG_PACKAGES_LTO=ON -G Ninja --fresh -B build_$BIT -S $PWD
           ninja -C build_$BIT download || true
 
       - name: Reset cached mpv build state
@@ -132,8 +137,8 @@ jobs:
       - name: Building mpv
         id: build_mpv_step
         env:
-          MPV_TARBALL: ${{ github.event.inputs.mpv_tarball }}
-          UPDATE_SOURCES: ${{ github.event.inputs.update_sources }}
+          MPV_TARBALL: ${{ env.MPV_TARBALL_INPUT }}
+          UPDATE_SOURCES: ${{ env.UPDATE_SOURCES_INPUT }}
         run: |
           $UPDATE_SOURCES && ninja -C build_$BIT update || true
           $MPV_TARBALL && ninja -C build_$BIT mpv-release || ninja -C build_$BIT mpv
@@ -310,7 +315,7 @@ jobs:
     name: Upload releases
     runs-on: ubuntu-latest
     needs: build_mpv
-    if: ${{ github.event.inputs.sourceforge == 'true' || github.event.inputs.github_release == 'true' }}
+    if: ${{ startsWith(github.ref, 'refs/tags/') || github.event.inputs.sourceforge == 'true' || github.event.inputs.github_release == 'true' }}
     env:
       GH_TOKEN: ${{ github.token }}
       CURL_RETRIES: "--connect-timeout 60 --retry 999 --retry-delay 5 --retry-all-errors"
@@ -328,8 +333,6 @@ jobs:
           git config --global --add safe.directory $PWD
 
       - uses: actions/checkout@main
-        with:
-          ref: master
 
       - name: Loading release_x86_64 cache
         uses: actions/cache/restore@main
@@ -369,24 +372,28 @@ jobs:
 
       - name: Uploading packages to Github release
         id: upload_packages_gh
-        if: ${{ github.event.inputs.github_release == 'true' && github.event.inputs.mpv_tarball == 'false' }}
+        if: ${{ startsWith(github.ref, 'refs/tags/') || (github.event.inputs.github_release == 'true' && github.event.inputs.mpv_tarball == 'false') }}
         continue-on-error: true
         run: |
           short_date=$(date "+%Y%m%d")
+          release_tag="${GITHUB_REF_NAME:-$short_date}"
           body=$(cat <<END
-          ![GitHub release (by tag)](https://img.shields.io/github/downloads/${GITHUB_REPOSITORY}/$short_date/total?label=Downloads)
+          ![GitHub release (by tag)](https://img.shields.io/github/downloads/${GITHUB_REPOSITORY}/${release_tag}/total?label=Downloads)
 
           **Workflow run**: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
           END
           )
-          id=$(curl -H "Authorization: Bearer $GH_TOKEN" $CURL_RETRIES -s -X POST -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/$GITHUB_REPOSITORY/releases -d @- <<END | jq -r '.id'
-          {
-            "tag_name": "$short_date",
-            "name": "$short_date",
-            "body": "$(echo ${body//$'\n'/'\n'})"
-          }
-          END
-          )
+          id=$(curl -H "Authorization: Bearer $GH_TOKEN" $CURL_RETRIES -s -X GET -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$release_tag | jq -r '.id // empty')
+          if [[ -z "$id" || "$id" == "null" ]]; then
+            id=$(curl -H "Authorization: Bearer $GH_TOKEN" $CURL_RETRIES -s -X POST -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/$GITHUB_REPOSITORY/releases -d @- <<END | jq -r '.id'
+            {
+              "tag_name": "$release_tag",
+              "name": "$release_tag",
+              "body": "$(echo ${body//$'\n'/'\n'})"
+            }
+END
+            )
+          fi
           for file in release/*.7z; do curl -H "Authorization: Bearer $GH_TOKEN" $CURL_RETRIES -X POST -H "Accept: application/vnd.github.v3+json" -H "Content-Type: $(file -b --mime-type $file)" https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$id/assets?name=$(basename $file) --data-binary @$file; done
 
       - name: Pruning tags
