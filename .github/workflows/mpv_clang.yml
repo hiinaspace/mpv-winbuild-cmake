@@ -141,6 +141,12 @@ jobs:
 
       - name: Packaging mpv
         run: |
+          find_one() {
+            local root="$1"
+            local pattern="$2"
+            find "$root" -type f -name "$pattern" -print -quit 2>/dev/null
+          }
+
           mkdir -p release_$BIT
           build_date=$(date "+%Y%m%d")
           git_hash=$(git -C src_packages/mpv rev-parse --short=7 HEAD)
@@ -154,17 +160,31 @@ jobs:
 
           mkdir -p "$runtime_dir/doc" "$runtime_dir/mpv" "$dev_dir/include/mpv" "$debug_dir"
 
-          cp "$binary_dir/mpv.exe" "$runtime_dir/mpv.exe"
-          cp "$binary_dir/mpv.com" "$runtime_dir/mpv.com"
-          cp "$binary_dir/mpv.pdf" "$runtime_dir/doc/manual.pdf"
-          cp "$install_dir/etc/fonts/fonts.conf" "$runtime_dir/mpv/fonts.conf"
+          mpv_exe=$(find_one "$binary_dir" "mpv.exe")
+          mpv_com=$(find_one "$binary_dir" "mpv.com")
+          mpv_pdf=$(find_one "$binary_dir" "mpv.pdf")
+          mpv_pdb=$(find_one "$binary_dir" "mpv.pdb")
+          libmpv_dll=$(find_one "$binary_dir" "libmpv-2.dll")
+          libmpv_imp=$(find_one "$binary_dir" "libmpv.dll.a")
 
-          cp "$binary_dir/libmpv-2.dll" "$dev_dir/libmpv-2.dll"
-          cp "$binary_dir/libmpv.dll.a" "$dev_dir/libmpv.dll.a"
+          if [[ -z "$libmpv_dll" || -z "$libmpv_imp" ]]; then
+            echo "Expected libmpv outputs were not found under $binary_dir"
+            find "$binary_dir" -maxdepth 2 -type f | sort || true
+            exit 1
+          fi
+
+          cp "$libmpv_dll" "$runtime_dir/libmpv-2.dll"
+          [[ -n "$mpv_exe" ]] && cp "$mpv_exe" "$runtime_dir/mpv.exe"
+          [[ -n "$mpv_com" ]] && cp "$mpv_com" "$runtime_dir/mpv.com"
+          [[ -n "$mpv_pdf" ]] && cp "$mpv_pdf" "$runtime_dir/doc/manual.pdf"
+          [[ -f "$install_dir/etc/fonts/fonts.conf" ]] && cp "$install_dir/etc/fonts/fonts.conf" "$runtime_dir/mpv/fonts.conf"
+
+          cp "$libmpv_dll" "$dev_dir/libmpv-2.dll"
+          cp "$libmpv_imp" "$dev_dir/libmpv.dll.a"
           cp src_packages/mpv/include/mpv/*.h "$dev_dir/include/mpv/"
 
-          if [[ -f "$binary_dir/mpv.pdb" ]]; then
-            cp "$binary_dir/mpv.pdb" "$debug_dir/"
+          if [[ -n "$mpv_pdb" ]]; then
+            cp "$mpv_pdb" "$debug_dir/"
           fi
 
           7z x -y src_packages/mpv-packaging/d3dcompiler*.7z "-o${d3d_tmp}" >/dev/null
