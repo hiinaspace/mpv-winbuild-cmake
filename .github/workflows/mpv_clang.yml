@@ -142,9 +142,15 @@ jobs:
       - name: Packaging mpv
         run: |
           find_one() {
-            local root="$1"
-            local pattern="$2"
-            find "$root" -type f -name "$pattern" -print -quit 2>/dev/null
+            local pattern="$1"
+            shift
+            local root
+            for root in "$@"; do
+              if [[ -d "$root" ]]; then
+                find "$root" -name "$pattern" -print -quit 2>/dev/null && return 0
+              fi
+            done
+            return 0
           }
 
           mkdir -p release_$BIT
@@ -160,16 +166,17 @@ jobs:
 
           mkdir -p "$runtime_dir/doc" "$runtime_dir/mpv" "$dev_dir/include/mpv" "$debug_dir"
 
-          mpv_exe=$(find_one "$binary_dir" "mpv.exe")
-          mpv_com=$(find_one "$binary_dir" "mpv.com")
-          mpv_pdf=$(find_one "$binary_dir" "mpv.pdf")
-          mpv_pdb=$(find_one "$binary_dir" "mpv.pdb")
-          libmpv_dll=$(find_one "$binary_dir" "libmpv-2.dll")
-          libmpv_imp=$(find_one "$binary_dir" "libmpv.dll.a")
+          mpv_exe=$(find_one "mpv.exe" "$binary_dir" "$install_dir/bin")
+          mpv_com=$(find_one "mpv.com" "$binary_dir" "$install_dir/bin")
+          mpv_pdf=$(find_one "mpv.pdf" "$binary_dir" "$install_dir/share/doc/mpv" "$install_dir/doc")
+          mpv_pdb=$(find_one "mpv.pdb" "$binary_dir" "$install_dir/bin")
+          libmpv_dll=$(find_one "libmpv-2.dll" "$binary_dir" "$install_dir/bin")
+          libmpv_imp=$(find_one "libmpv.dll.a" "$binary_dir" "$install_dir/lib" "$install_dir/bin")
 
           if [[ -z "$libmpv_dll" || -z "$libmpv_imp" ]]; then
-            echo "Expected libmpv outputs were not found under $binary_dir"
-            find "$binary_dir" -maxdepth 2 -type f | sort || true
+            echo "Expected libmpv outputs were not found under $binary_dir or $install_dir"
+            find "$binary_dir" -maxdepth 2 | sort || true
+            find "$install_dir" -maxdepth 3 | sort || true
             exit 1
           fi
 
