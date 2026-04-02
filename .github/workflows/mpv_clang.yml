@@ -133,17 +133,50 @@ jobs:
       - name: Packaging mpv
         run: |
           mkdir -p release_$BIT
-          ninja -C build_$BIT mpv-liteclean
-          ninja -C build_$BIT mpv
-          ninja -C build_$BIT mpv-packaging
-          shopt -s nullglob
-          archives=(build_$BIT/mpv*.7z)
-          if [[ ${#archives[@]} -eq 0 ]]; then
-            echo "Expected packaged archives under build_$BIT but found none"
-            find build_$BIT -maxdepth 2 \( -type f -o -type d \) | sort
-            exit 1
+          build_date=$(date "+%Y%m%d")
+          git_hash=$(git -C src_packages/mpv rev-parse --short=7 HEAD)
+          binary_dir=$PWD/build_$BIT/packages/mpv-prefix/src/mpv-build
+          install_dir=$PWD/build_$BIT/$BIT-w64-mingw32
+          package_root=$PWD/release_$BIT/package_root
+          runtime_dir=$package_root/mpv-${arch}-${build_date}-git-${git_hash}
+          dev_dir=$package_root/mpv-dev-${arch}-${build_date}-git-${git_hash}
+          debug_dir=$package_root/mpv-debug-${arch}-${build_date}-git-${git_hash}
+          d3d_tmp=$(mktemp -d)
+
+          mkdir -p "$runtime_dir/doc" "$runtime_dir/mpv" "$dev_dir/include/mpv" "$debug_dir"
+
+          cp "$binary_dir/mpv.exe" "$runtime_dir/mpv.exe"
+          cp "$binary_dir/mpv.com" "$runtime_dir/mpv.com"
+          cp "$binary_dir/mpv.pdf" "$runtime_dir/doc/manual.pdf"
+          cp "$install_dir/etc/fonts/fonts.conf" "$runtime_dir/mpv/fonts.conf"
+
+          cp "$binary_dir/libmpv-2.dll" "$dev_dir/libmpv-2.dll"
+          cp "$binary_dir/libmpv.dll.a" "$dev_dir/libmpv.dll.a"
+          cp src_packages/mpv/include/mpv/*.h "$dev_dir/include/mpv/"
+
+          if [[ -f "$binary_dir/mpv.pdb" ]]; then
+            cp "$binary_dir/mpv.pdb" "$debug_dir/"
           fi
-          mv "${archives[@]}" release_$BIT
+
+          7z x -y src_packages/mpv-packaging/d3dcompiler*.7z "-o${d3d_tmp}" >/dev/null
+          cp "$d3d_tmp/$BIT/d3dcompiler_43.dll" "$runtime_dir/"
+
+          (
+            cd "$runtime_dir"
+            7z a -m0=lzma2 -mx=9 -ms=on "../../$(basename "$runtime_dir").7z" ./*
+          )
+          (
+            cd "$dev_dir"
+            7z a -m0=lzma2 -mx=9 -ms=on "../../$(basename "$dev_dir").7z" ./*
+          )
+          if compgen -G "$debug_dir/*" > /dev/null; then
+            (
+              cd "$debug_dir"
+              7z a -m0=lzma2 -mx=9 -ms=on "../../$(basename "$debug_dir").7z" ./*
+            )
+          fi
+
+          rm -rf "$d3d_tmp" "$package_root"
 
       - name: Copying ffmpeg
         run: |
