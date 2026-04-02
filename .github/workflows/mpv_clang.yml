@@ -158,40 +158,53 @@ jobs:
           git_hash=$(git -C src_packages/mpv rev-parse --short=7 HEAD)
           binary_dir=$PWD/build_$BIT/packages/mpv-prefix/src/mpv-build
           install_dir=$PWD/build_$BIT/$BIT-w64-mingw32
+          build_root=$PWD/build_$BIT
           package_root=$PWD/release_$BIT/package_root
           runtime_dir=$package_root/mpv-${arch}-${build_date}-git-${git_hash}
           dev_dir=$package_root/mpv-dev-${arch}-${build_date}-git-${git_hash}
           debug_dir=$package_root/mpv-debug-${arch}-${build_date}-git-${git_hash}
           d3d_tmp=$(mktemp -d)
+          packaged_runtime_dir=$(find "$build_root" -maxdepth 1 -type d -name "mpv-${arch}*" ! -name "mpv-dev-*" ! -name "mpv-debug-*" -print -quit)
+          packaged_dev_dir=$(find "$build_root" -maxdepth 1 -type d -name "mpv-dev-${arch}*" -print -quit)
+          packaged_debug_dir=$(find "$build_root" -maxdepth 1 -type d -name "mpv-debug-${arch}*" -print -quit)
 
           mkdir -p "$runtime_dir/doc" "$runtime_dir/mpv" "$dev_dir/include/mpv" "$debug_dir"
 
-          mpv_exe=$(find_one "mpv.exe" "$binary_dir" "$install_dir/bin")
-          mpv_com=$(find_one "mpv.com" "$binary_dir" "$install_dir/bin")
-          mpv_pdf=$(find_one "mpv.pdf" "$binary_dir" "$install_dir/share/doc/mpv" "$install_dir/doc")
-          mpv_pdb=$(find_one "mpv.pdb" "$binary_dir" "$install_dir/bin")
-          libmpv_dll=$(find_one "libmpv-2.dll" "$binary_dir" "$install_dir/bin")
-          libmpv_imp=$(find_one "libmpv.dll.a" "$binary_dir" "$install_dir/lib" "$install_dir/bin")
+          if [[ -n "$packaged_runtime_dir" && -n "$packaged_dev_dir" ]]; then
+            cp -r "$packaged_runtime_dir"/. "$runtime_dir"/
+            cp -r "$packaged_dev_dir"/. "$dev_dir"/
+            if [[ -n "$packaged_debug_dir" ]]; then
+              cp -r "$packaged_debug_dir"/. "$debug_dir"/
+            fi
+          else
+            mpv_exe=$(find_one "mpv.exe" "$binary_dir" "$install_dir/bin")
+            mpv_com=$(find_one "mpv.com" "$binary_dir" "$install_dir/bin")
+            mpv_pdf=$(find_one "mpv.pdf" "$binary_dir" "$install_dir/share/doc/mpv" "$install_dir/doc")
+            mpv_pdb=$(find_one "mpv.pdb" "$binary_dir" "$install_dir/bin")
+            libmpv_dll=$(find_one "libmpv-2.dll" "$binary_dir" "$install_dir/bin")
+            libmpv_imp=$(find_one "libmpv.dll.a" "$binary_dir" "$install_dir/lib" "$install_dir/bin")
 
-          if [[ -z "$libmpv_dll" || -z "$libmpv_imp" ]]; then
-            echo "Expected libmpv outputs were not found under $binary_dir or $install_dir"
-            find "$binary_dir" -maxdepth 2 | sort || true
-            find "$install_dir" -maxdepth 3 | sort || true
-            exit 1
-          fi
+            if [[ -z "$libmpv_dll" || -z "$libmpv_imp" ]]; then
+              echo "Expected libmpv outputs were not found under package dirs, $binary_dir, or $install_dir"
+              find "$build_root" -maxdepth 1 -type d -name "mpv*" | sort || true
+              find "$binary_dir" -maxdepth 2 | sort || true
+              find "$install_dir" -maxdepth 3 | sort || true
+              exit 1
+            fi
 
-          cp "$libmpv_dll" "$runtime_dir/libmpv-2.dll"
-          [[ -n "$mpv_exe" ]] && cp "$mpv_exe" "$runtime_dir/mpv.exe"
-          [[ -n "$mpv_com" ]] && cp "$mpv_com" "$runtime_dir/mpv.com"
-          [[ -n "$mpv_pdf" ]] && cp "$mpv_pdf" "$runtime_dir/doc/manual.pdf"
-          [[ -f "$install_dir/etc/fonts/fonts.conf" ]] && cp "$install_dir/etc/fonts/fonts.conf" "$runtime_dir/mpv/fonts.conf"
+            cp "$libmpv_dll" "$runtime_dir/libmpv-2.dll"
+            [[ -n "$mpv_exe" ]] && cp "$mpv_exe" "$runtime_dir/mpv.exe"
+            [[ -n "$mpv_com" ]] && cp "$mpv_com" "$runtime_dir/mpv.com"
+            [[ -n "$mpv_pdf" ]] && cp "$mpv_pdf" "$runtime_dir/doc/manual.pdf"
+            [[ -f "$install_dir/etc/fonts/fonts.conf" ]] && cp "$install_dir/etc/fonts/fonts.conf" "$runtime_dir/mpv/fonts.conf"
 
-          cp "$libmpv_dll" "$dev_dir/libmpv-2.dll"
-          cp "$libmpv_imp" "$dev_dir/libmpv.dll.a"
-          cp src_packages/mpv/include/mpv/*.h "$dev_dir/include/mpv/"
+            cp "$libmpv_dll" "$dev_dir/libmpv-2.dll"
+            cp "$libmpv_imp" "$dev_dir/libmpv.dll.a"
+            cp src_packages/mpv/include/mpv/*.h "$dev_dir/include/mpv/"
 
-          if [[ -n "$mpv_pdb" ]]; then
-            cp "$mpv_pdb" "$debug_dir/"
+            if [[ -n "$mpv_pdb" ]]; then
+              cp "$mpv_pdb" "$debug_dir/"
+            fi
           fi
 
           7z x -y src_packages/mpv-packaging/d3dcompiler*.7z "-o${d3d_tmp}" >/dev/null
